@@ -9,8 +9,8 @@ conda activate Enh_textfield
 python generate.py configs/singleview/texfields/car_demo.yaml
 
 ## Result
-- Result can be check in out>demo.
-- Generate results using our pretrained model.
+- Demo result can be check in out>demo.
+- Generate result using our pretrained model.
 - Checkpoint path is defined in 'configs/singleview/texfields/car_demo.yaml'.
 
 
