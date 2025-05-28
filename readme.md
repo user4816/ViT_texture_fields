@@ -11,9 +11,7 @@ python generate.py configs/singleview/texfields/car_demo.yaml
 ※ Generate results using our pretrained model.
 ※ Checkpoint path is defined in 'configs/singleview/texfields/car_demo.yaml'.
 
-## Training
-python -m torch.distributed.launch --nproc_per_node='Your # of GPU' train.py configs/singleview/texfields/car.yaml
-
-
 ![1](https://github.com/user-attachments/assets/03f88f1a-8d4a-41d1-a42e-95cb8da30030)
+
+
 
