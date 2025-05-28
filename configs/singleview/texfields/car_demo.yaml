@@ -1,16 +1,24 @@
 method: texnet
 inherit_from: configs/singleview/texfields/car.yaml
+
 data:
   path_shapes: data/demo
   dataset_imgs_type: image_folder
   img_size: 256
+  input_type: image
+  points_subsample: 2048
+
 model:
-  model_url: 'https://s3.eu-central-1.amazonaws.com/avg-projects/texture_fields/models/car-b3b2a506.pt'
+  model_url: null
+  decoder_kwargs:
+    hidden_size: 64
+
 generation:
   batch_size: 1
+
 test:
-  model_file: model_best.pt
+  model_file: 'out/singleview/car_vit/model_best.pt'
   vis_dir: 'out/demo'
-  dataset_split: 'test_vis' 
-  with_occnet: False
+  dataset_split: 'test_vis'
+  with_occnet: True
   generation_mode: 'HD'

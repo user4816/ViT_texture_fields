@@ -2,15 +2,17 @@ import os
 import urllib
 import torch
 from torch.utils import model_zoo
+import torch.distributed as dist
 
 
 class CheckpointIO(object):
-    def __init__(self, checkpoint_dir='./chkpts', **kwargs):
-        self.module_dict = kwargs
+    def __init__(self, checkpoint_dir='./chkpts'):
         self.checkpoint_dir = checkpoint_dir
+        self.module_dict = {}  
 
-        if not os.path.exists(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
+        if not dist.is_available() or not dist.is_initialized() or dist.get_rank() == 0:
+            if not os.path.exists(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
 
     def register_modules(self, **kwargs):
         self.module_dict.update(kwargs)

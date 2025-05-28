@@ -5,7 +5,7 @@ data:
   img_size: 128
 training:
   out_dir: 'out/singleview/car'
-  batch_size: 18
+  batch_size: 4
   model_selection_metric: loss_val
   model_selection_mode: minimize
   print_every: 100
@@ -22,11 +22,15 @@ training:
   gradient_penalties_reg: 0.
 model:
   decoder: each_layer_c_larger
-  encoder: resnet18
+  encoder: vit_small
   geometry_encoder: resnet
   decoder_kwargs:
     leaky: True
     resnet_leaky: False
+    use_attention: False
+    hidden_size: 64
+    attention_heads: 4
+    num_blocks: 4
   encoder_kwargs: {}
   geometry_encoder_kwargs: {}
   generator_bg_kwargs: {}

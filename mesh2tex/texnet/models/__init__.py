@@ -9,11 +9,13 @@ from mesh2tex.texnet.models import (
 
 encoder_dict = {
     'resnet18': image_encoder.Resnet18,
+    'vit_small': image_encoder.ViTEncoder,
 }
 
 decoder_dict = {
     'each_layer_c': decoder.DecoderEachLayerC,
     'each_layer_c_larger': decoder.DecoderEachLayerCLarger,
+    'each_layer_c_larger_attention': decoder.DecoderEachLayerCLarger_Attention,
 }
 
 discriminator_dict = {

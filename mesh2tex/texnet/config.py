@@ -36,13 +36,21 @@ def get_models(cfg, dataset=None, device=None):
             c_dim=c_dim, **encoder_kwargs
         ).to(device)
 
+    # decoder = models.decoder_dict[decoder](
+    #     c_dim=c_dim, z_dim=z_dim, **decoder_kwargs
+    # ).to(device)
+
     decoder = models.decoder_dict[decoder](
-        c_dim=c_dim, z_dim=z_dim, **decoder_kwargs
+        c_dim=c_dim, z_dim=z_dim, dim=3, **decoder_kwargs
     ).to(device)
 
     geometry_encoder = geometry.encoder_dict[geometry_encoder](
         c_dim=c_dim, **geometry_encoder_kwargs
     ).to(device)
+
+    encoder.to(device)
+    decoder.to(device)
+    geometry_encoder.to(device)
 
     if vae_encoder is not None:
         vae_encoder = models.vae_encoder_dict[vae_encoder](
@@ -199,15 +207,21 @@ def get_dataset(mode, cfg, input_sampling=True):
     return ds
 
 
-def get_dataloader(mode, cfg):
-    # Config
+def get_dataloader(mode, cfg, distributed=False):
     batch_size = cfg['training']['batch_size']
-    with_shuffle = cfg['data']['with_shuffle']
+    num_workers = 2
+    shuffle = cfg['data']['with_shuffle'] and not distributed
+
+    # print(f"[DataLoader] Mode: {mode} | Batch size: {batch_size} | Num workers: {num_workers}")
 
     ds_shapes = get_dataset(mode, cfg)
+
+    sampler = torch.utils.data.distributed.DistributedSampler(ds_shapes) if distributed else None
+
     data_loader = torch.utils.data.DataLoader(
-        ds_shapes, batch_size=batch_size, num_workers=12, shuffle=with_shuffle)
-        #gcollate_fn=data.collate_remove_none)
+        ds_shapes, batch_size=batch_size,
+        num_workers=num_workers, shuffle=shuffle,
+        sampler=sampler)
 
     return data_loader
 
@@ -228,7 +242,7 @@ def get_meshloader(mode, cfg):
     )
 
     data_loader = torch.utils.data.DataLoader(
-        ds_shapes, batch_size=batch_size, num_workers=12, shuffle=True)
+        ds_shapes, batch_size=batch_size, num_workers=2, shuffle=True)
         # collate_fn=data.collate_remove_none)
 
     return data_loader

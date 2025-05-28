@@ -161,10 +161,7 @@ class Trainer(BaseTrainer):
         return self.w_gan * (dloss_fake.item() + dloss_real.item())
 
     def train_step_g(self, batch):
-        '''
-        A single train step of the generator part of generative model 
-        (VAE: Encoder+Decoder and GAN: Generator)
-        '''
+        ''' Generative training step with gradient clipping '''
         model_d = self.model_d
         model_g = self.model_g
 
@@ -177,47 +174,36 @@ class Trainer(BaseTrainer):
 
         self.optimizer_g.zero_grad()
 
-        # Get data
         depth = batch['2d.depth'].to(self.device)
         img_real = batch['2d.img'].to(self.device)
         cam_K = batch['2d.camera_mat'].to(self.device)
         cam_W = batch['2d.world_mat'].to(self.device)
         mesh_repr = geometry.get_representation(batch, self.device)
 
-        # Loss on fake
         loss_vae = 0
         loss_gan = 0
 
-        # Forward part and loss derivation for given experiment
-        if self.vae_loss is True:          
-            loss_vae, re, kl, img_fake = model_g.elbo(img_real, depth,
-                                                      cam_K, cam_W, 
-                                                      mesh_repr)
-            if self.gan_loss is True:
+        if self.vae_loss:          
+            loss_vae, re, kl, img_fake = model_g.elbo(img_real, depth, cam_K, cam_W, mesh_repr)
+            if self.gan_loss:
                 d_fake = model_d(img_fake, depth, mesh_repr)
                 loss_gan = self.compute_gan_loss(d_fake, 1)
-        elif self.gan_loss is True:
+        elif self.gan_loss:
             img_fake = model_g(depth, cam_K, cam_W, mesh_repr)
             d_fake = model_d(img_fake, depth, mesh_repr)
             loss_gan = self.compute_gan_loss(d_fake, 1)
 
-        # weighting of losses (128*128*3=49152)
         loss = self.w_vae * loss_vae + self.w_gan * loss_gan
         loss.backward()
 
-        # Gradient step
+        torch.nn.utils.clip_grad_norm_(model_g.parameters(), max_norm=1.0)
         self.optimizer_g.step()
-
-        # Update moving average
-        # self.update_moving_average()
 
         return loss.item()
 
+
     def train_step_cond(self, batch):
-        '''
-        A single train step of the conditional model
-        with or w/o generator part of adversarial loss
-        '''
+        ''' Conditional training step with gradient clipping '''
         model_d = self.model_d
         model_g = self.model_g
 
@@ -230,7 +216,6 @@ class Trainer(BaseTrainer):
 
         self.optimizer_g.zero_grad()
 
-        # Get data
         depth = batch['2d.depth'].to(self.device)
         img_real = batch['2d.img'].to(self.device)
         cam_K = batch['2d.camera_mat'].to(self.device)
@@ -238,29 +223,24 @@ class Trainer(BaseTrainer):
         mesh_repr = geometry.get_representation(batch, self.device)
         condition = batch['condition'].to(self.device)
 
-        # Loss on fake
         img_fake = model_g(depth, cam_K, cam_W, mesh_repr, condition)
         loss_pix = 0
         loss_gan = 0
 
-        if self.pix_loss is True:
+        if self.pix_loss:
             loss_pix = self.compute_loss(img_fake, img_real)
-        if self.gan_loss is True:
+        if self.gan_loss:
             d_fake = model_d(img_fake, depth, mesh_repr)
             loss_gan = self.compute_gan_loss(d_fake, 1)
 
-        # weighting
         loss = self.w_pix * loss_pix + self.w_gan * loss_gan
         loss.backward()
 
-        # Gradient step
+        torch.nn.utils.clip_grad_norm_(model_g.parameters(), max_norm=1.0)
         self.optimizer_g.step()
 
-        # Update moving average
-        # self.update_moving_average()
-
         return loss.item()
-
+    
     def compute_loss(self, img_fake, img_real):
         '''
         Compute Pixelloss
@@ -324,7 +304,7 @@ class Trainer(BaseTrainer):
 
     def visualize(self, batch):
         '''
-        Visualization step
+        Visualization step (Memory-efficient version)
         '''
         depth = batch['2d.depth'].to(self.device)
         img_real = batch['2d.img'].to(self.device)
@@ -333,7 +313,6 @@ class Trainer(BaseTrainer):
         mesh_repr = geometry.get_representation(batch, self.device)
         condition = batch['condition'].to(self.device)
 
-        # determine constants
         batch_size = depth.size(0)
         num_views = depth.size(1)
         assert(num_views == 5)
@@ -341,50 +320,57 @@ class Trainer(BaseTrainer):
         mesh_points = mesh_repr['points']
         mesh_normals = mesh_repr['normals']
 
-        # batch loop
+        self.model_g.eval()
+
+        torch.cuda.synchronize()
+
         for j in range(batch_size):
 
-            # Gather input information on shape, depth, camera and condition
-            geom_repr = {
-                'points': mesh_points[j].expand(num_views,
-                                                mesh_points.size(1),
-                                                mesh_points.size(2)),
-                'normals': mesh_normals[j].expand(num_views,
-                                                  mesh_normals.size(1),
-                                                  mesh_normals.size(2)),
-            }
+            # Save real images
+            save_image(img_real[j],
+                    os.path.join(self.vis_dir, 'real_%i.png' % j))
 
-            depth_ = depth[j]
-            img_real_ = img_real[j]
-            if len(condition.size()) == 1:
-                condition_ = condition[j].expand(num_views)
-            else:
-                condition_ = condition[j].expand(num_views,
-                                                 condition.size(1),
-                                                 condition.size(2),
-                                                 condition.size(3))
-            cam_K_ = cam_K[j]
-            cam_W_ = cam_W[j]
+            img_fake_views = []
 
-            # save real images
-            save_image(img_real_,
-                       os.path.join(self.vis_dir, 'real_%i.png' % j))
+            # Process each view separately to reduce memory usage
+            for v in range(num_views):
+                geom_repr_single = {
+                    'points': mesh_points[j:j+1],
+                    'normals': mesh_normals[j:j+1],
+                }
 
-            # predict fake images and save
-            self.model_g.eval()
-            with torch.no_grad():
-                img_fake = self.model_g(depth_, cam_K_, cam_W_,
-                                        geom_repr, condition_)
-            save_image(img_fake.cpu(),
-                       os.path.join(self.vis_dir, 'fake_%i.png' % j))
+                depth_single = depth[j, v:v+1]
+                cam_K_single = cam_K[j, v:v+1]
+                cam_W_single = cam_W[j, v:v+1]
+
+                if len(condition.size()) == 1:
+                    condition_single = condition[j:j+1]
+                else:
+                    condition_single = condition[j:j+1]
+
+                with torch.no_grad():
+                    img_fake_single = self.model_g(depth_single, cam_K_single, cam_W_single,
+                                                geom_repr_single, condition_single)
+
+                    torch.cuda.synchronize()
+
+                img_fake_views.append(img_fake_single.cpu())
+
+            # concatenate and save all views together
+            img_fake_all = torch.cat(img_fake_views, dim=0)
+            save_image(img_fake_all,
+                    os.path.join(self.vis_dir, 'fake_%i.png' % j))
 
             # save condition images
             if len(condition.size()) != 1:
                 save_image(condition[j].cpu(),
-                           os.path.join(self.vis_dir, 'condition_%i.png' % j))
+                        os.path.join(self.vis_dir, 'condition_%i.png' % j))
             else:
                 np.savetxt(os.path.join(self.vis_dir, 'condition_%i.txt' % j), 
-                           condition_.cpu())
+                        condition[j].cpu())
+        
+        torch.cuda.synchronize()
+
 
     def update_moving_average(self):
         '''

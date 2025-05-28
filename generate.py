@@ -38,11 +38,18 @@ else:
 # Load Model
 models = config.get_models(cfg, device=device, dataset=dataset)
 model_g = models['generator']
-checkpoint_io = CheckpointIO(out_dir, model_g=model_g)
-if model_url is None:
-    checkpoint_io.load(cfg['test']['model_file'])
-else:
-    checkpoint_io.load(cfg['model']['model_url'])
+
+checkpoint_io = CheckpointIO(out_dir)
+checkpoint_io.register_modules(model_g=model_g)
+
+checkpoint = torch.load(cfg['test']['model_file'])
+
+new_state_dict = {}
+for k, v in checkpoint['model_g'].items():
+    new_key = k.replace("module.", "") if k.startswith("module.") else k
+    new_state_dict[new_key] = v
+
+model_g.load_state_dict(new_state_dict, strict=False)
 
 # Assign Generator
 generator = config.get_generator(model_g, cfg, device)
